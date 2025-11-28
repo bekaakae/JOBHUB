@@ -17,6 +17,27 @@ import NotFound from './pages/NotFound'
 import ErrorBoundary from './components/ErrorBoundary'
 import { syncUserWithBackend } from './services/authService'
 
+// src/App.jsx - Add this useEffect for debugging
+import { useEffect } from 'react'
+
+function App() {
+  useEffect(() => {
+    // Debug: Log API configuration
+    console.log('🔧 Frontend Configuration:');
+    console.log('- VITE_API_URL:', import.meta.env.VITE_API_URL);
+    console.log('- VITE_SOCKET_URL:', import.meta.env.VITE_SOCKET_URL);
+    console.log('- Mode:', import.meta.env.MODE);
+    
+    // Test API connection on startup
+    fetch(`${import.meta.env.VITE_API_URL}/health`)
+      .then(res => res.json())
+      .then(data => console.log('✅ Backend health check:', data))
+      .catch(err => console.error('❌ Backend connection failed:', err));
+  }, []);
+
+  // ... rest of your App component
+}
+
 function App() {
   const { isSignedIn, userId, user, isLoaded } = useAuth()
   const [authChecked, setAuthChecked] = useState(false)
