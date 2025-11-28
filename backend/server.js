@@ -48,7 +48,7 @@ app.use(cors({
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'x-temp-admin']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'x-temp-admin', 'x-admin-auth']
 }));
 
 // Rate limiting
@@ -69,10 +69,19 @@ app.use(express.urlencoded({ extended: true }));
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.FRONTEND_URL || "http://localhost:5173",
+    origin: [
+      "https://jobhub-frontend-6e6g.onrender.com",
+      "http://localhost:5173"
+    ],
     credentials: true,
     methods: ["GET", "POST"]
   },
+   allowedHeaders: [
+      "Content-Type", 
+      "Authorization", 
+      "x-temp-admin",   // ADD THIS
+      "x-admin-auth"    // ADD THIS
+    ],
   transports: ['websocket', 'polling']
 });
 
