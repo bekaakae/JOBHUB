@@ -1,4 +1,4 @@
-// server.js - PRODUCTION READY WITH ENHANCED ERROR HANDLING
+// server.js - FIXED VERSION
 import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
@@ -40,7 +40,7 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 
-// CORS configuration
+// CORS configuration - FIXED: Added all required headers
 app.use(cors({
   origin: [
     "https://jobhub-frontend-6e6g.onrender.com",
@@ -48,13 +48,21 @@ app.use(cors({
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'x-temp-admin', 'x-admin-auth']
+  allowedHeaders: [
+    'Content-Type', 
+    'Authorization', 
+    'X-Requested-With', 
+    'x-temp-admin', 
+    'x-admin-auth',
+    'Access-Control-Allow-Headers',
+    'Access-Control-Allow-Origin'
+  ]
 }));
 
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: process.env.NODE_ENV === 'production' ? 100 : 1000, // More lenient in development
+  max: process.env.NODE_ENV === 'production' ? 100 : 1000,
   message: 'Too many requests from this IP, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
@@ -67,6 +75,8 @@ app.use(express.urlencoded({ extended: true }));
 
 // Initialize HTTP server and Socket.io
 const httpServer = createServer(app);
+
+// Socket.io configuration - FIXED: Removed invalid allowedHeaders from Socket.io
 const io = new Server(httpServer, {
   cors: {
     origin: [
@@ -76,12 +86,6 @@ const io = new Server(httpServer, {
     credentials: true,
     methods: ["GET", "POST"]
   },
-   allowedHeaders: [
-      "Content-Type", 
-      "Authorization", 
-      "x-temp-admin",   // ADD THIS
-      "x-admin-auth"    // ADD THIS
-    ],
   transports: ['websocket', 'polling']
 });
 
@@ -120,64 +124,6 @@ try {
   console.warn('⚠️ Clerk middleware not available:', error.message);
   console.log('💡 Continuing without authentication middleware');
 }
-
-// HEALTH CHECK ENDPOINTS - Always available
-app.get("/api/health", (req, res) => {
-  res.status(200).json({ 
-    status: "OK", 
-    message: "JobHub API is running",
-    timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development',
-    database: mongoose.connection.readyState === 1 ? "Connected" : "Disconnected",
-    version: "1.0.0"
-  });
-});
-
-app.get("/", (req, res) => {
-  res.json({ 
-    message: "JobHub Backend API", 
-    version: "1.0.0",
-    status: "Operational",
-    environment: process.env.NODE_ENV || 'development',
-    endpoints: {
-      health: "GET /api/health",
-      debug: "GET /api/debug",
-      api: "Available at /api/*"
-    }
-  });
-});
-
-// DEBUG ENDPOINT - Safe environment info
-app.get("/api/debug", (req, res) => {
-  res.json({
-    server: {
-      nodeVersion: process.version,
-      platform: process.platform,
-      uptime: process.uptime(),
-      memory: process.memoryUsage(),
-      environment: process.env.NODE_ENV
-    },
-    database: {
-      status: mongoose.connection.readyState === 1 ? "Connected" : "Disconnected",
-      readyState: mongoose.connection.readyState
-    },
-    environment: {
-      port: process.env.PORT,
-      frontendUrl: process.env.FRONTEND_URL,
-      mongoUriExists: !!process.env.MONGO_URI,
-      mongoUriLength: process.env.MONGO_URI?.length,
-      clerkKeysExist: !!process.env.CLERK_SECRET_KEY && !!process.env.CLERK_PUBLISHABLE_KEY
-    },
-    routes: {
-      health: "GET /api/health",
-      auth: "POST/GET /api/auth/*",
-      categories: "GET /api/categories/*", 
-      jobs: "GET/POST /api/jobs/*",
-      comments: "GET/POST /api/comments/*",
-      likes: "POST /api/likes/*"
-    }
-  });
-});
 
 // DATABASE CONNECTION WITH RETRY LOGIC
 const connectDB = async (retries = 5, delay = 5000) => {
@@ -239,48 +185,149 @@ mongoose.connection.on('disconnected', () => {
   console.log('⚠️ Mongoose disconnected from MongoDB');
 });
 
-// DYNAMIC ROUTE LOADING WITH ERROR HANDLING
-const loadRoutes = async () => {
-  const routes = [
-    { path: './src/routes/authRoutes.js', name: 'Auth' },
-    { path: './src/routes/categoryRoutes.js', name: 'Categories' },
-    { path: './src/routes/jobRoutes.js', name: 'Jobs' },
-    { path: './src/routes/commentRoutes.js', name: 'Comments' },
-    { path: './src/routes/likeRoutes.js', name: 'Likes' },
-    { path: './src/routes/applicationRoutes.js', name: 'Applications' }
-  ];
+// MANUAL ROUTE IMPORT - FIXED: Replace dynamic loading with static imports
+console.log('🛣️ Importing routes manually...');
 
-  const loadedRoutes = [];
+let authRoutes, categoryRoutes, jobRoutes, commentRoutes, likeRoutes, applicationRoutes;
 
-  for (const route of routes) {
-    try {
-      console.log(`📦 Loading ${route.name} routes...`);
-      const module = await import(route.path);
-      
-      if (module && module.default) {
-        app.use(`/api/${route.name.toLowerCase()}`, module.default);
-        loadedRoutes.push(route.name);
-        console.log(`✅ ${route.name} routes mounted`);
-      } else {
-        console.warn(`⚠️ ${route.name} routes module export is invalid`);
-      }
-    } catch (error) {
-      console.error(`❌ Failed to load ${route.name} routes:`, error.message);
-      
-      // Create fallback routes for critical endpoints
-      if (route.name === 'Jobs') {
-        app.use('/api/jobs', (req, res) => {
-          res.status(503).json({ 
-            message: "Jobs service temporarily unavailable",
-            error: "Route loading failed"
-          });
-        });
-      }
+try {
+  // Import all routes statically
+  authRoutes = (await import("./src/routes/authRoutes.js")).default;
+  categoryRoutes = (await import("./src/routes/categoryRoutes.js")).default;
+  jobRoutes = (await import("./src/routes/jobRoutes.js")).default;
+  commentRoutes = (await import("./src/routes/commentRoutes.js")).default;
+  likeRoutes = (await import("./src/routes/likeRoutes.js")).default;
+  applicationRoutes = (await import("./src/routes/applicationRoutes.js")).default;
+  
+  console.log('✅ All routes imported successfully');
+} catch (error) {
+  console.error('❌ Failed to import routes:', error.message);
+  process.exit(1);
+}
+
+// MOUNT ROUTES EXPLICITLY - FIXED: Mount routes before health checks
+console.log('📌 Mounting routes...');
+
+app.use("/api/auth", authRoutes);
+console.log('✅ Auth routes mounted at /api/auth');
+
+app.use("/api/categories", categoryRoutes);
+console.log('✅ Category routes mounted at /api/categories');
+
+app.use("/api/jobs", jobRoutes);
+console.log('✅ Job routes mounted at /api/jobs');
+
+app.use("/api/comments", commentRoutes);
+console.log('✅ Comment routes mounted at /api/comments');
+
+app.use("/api/likes", likeRoutes);
+console.log('✅ Like routes mounted at /api/likes');
+
+app.use("/api/applications", applicationRoutes);
+console.log('✅ Application routes mounted at /api/applications');
+
+// HEALTH CHECK ENDPOINTS - Now placed AFTER API routes
+app.get("/api/health", (req, res) => {
+  res.status(200).json({ 
+    status: "OK", 
+    message: "JobHub API is running",
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development',
+    database: mongoose.connection.readyState === 1 ? "Connected" : "Disconnected",
+    version: "1.0.0"
+  });
+});
+
+app.get("/", (req, res) => {
+  res.json({ 
+    message: "JobHub Backend API", 
+    version: "1.0.0",
+    status: "Operational",
+    environment: process.env.NODE_ENV || 'development',
+    endpoints: {
+      health: "GET /api/health",
+      debug: "GET /api/debug",
+      categories: "GET /api/categories",
+      jobs: "GET /api/jobs",
+      api: "Available at /api/*"
     }
-  }
+  });
+});
 
-  return loadedRoutes;
-};
+// DEBUG ENDPOINT - Safe environment info
+app.get("/api/debug", (req, res) => {
+  res.json({
+    server: {
+      nodeVersion: process.version,
+      platform: process.platform,
+      uptime: process.uptime(),
+      memory: process.memoryUsage(),
+      environment: process.env.NODE_ENV
+    },
+    database: {
+      status: mongoose.connection.readyState === 1 ? "Connected" : "Disconnected",
+      readyState: mongoose.connection.readyState
+    },
+    environment: {
+      port: process.env.PORT,
+      frontendUrl: process.env.FRONTEND_URL,
+      mongoUriExists: !!process.env.MONGO_URI,
+      mongoUriLength: process.env.MONGO_URI?.length,
+      clerkKeysExist: !!process.env.CLERK_SECRET_KEY && !!process.env.CLERK_PUBLISHABLE_KEY
+    },
+    routes: {
+      health: "GET /api/health",
+      auth: "POST/GET /api/auth/*",
+      categories: "GET /api/categories/*", 
+      jobs: "GET/POST /api/jobs/*",
+      comments: "GET/POST /api/comments/*",
+      likes: "POST /api/likes/*"
+    }
+  });
+});
+
+// ROUTE DEBUG ENDPOINT - NEW: Test if routes are working
+app.get("/api/debug-routes", async (req, res) => {
+  try {
+    // Test if we can access database through models
+    const Category = (await import("./src/models/categoryModel.js")).default;
+    const Job = (await import("./src/models/jobModel.js")).default;
+    
+    const categoriesCount = await Category.countDocuments();
+    const jobsCount = await Job.countDocuments();
+    
+    res.json({
+      message: "Route Debug Information",
+      routes: {
+        categories: {
+          path: "/api/categories",
+          mounted: true,
+          database: {
+            count: categoriesCount,
+            status: categoriesCount > 0 ? "Has Data" : "Empty"
+          }
+        },
+        jobs: {
+          path: "/api/jobs", 
+          mounted: true,
+          database: {
+            count: jobsCount,
+            status: jobsCount > 0 ? "Has Data" : "Empty"
+          }
+        }
+      },
+      database: {
+        connected: mongoose.connection.readyState === 1,
+        state: mongoose.connection.readyState
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: "Debug route failed",
+      error: error.message
+    });
+  }
+});
 
 // ERROR HANDLING MIDDLEWARE
 app.use((err, req, res, next) => {
@@ -337,6 +384,7 @@ app.use('*', (req, res) => {
     availableEndpoints: [
       'GET /api/health',
       'GET /api/debug',
+      'GET /api/debug-routes',
       'GET /api/categories',
       'GET /api/jobs',
       'POST /api/auth/*',
@@ -359,11 +407,6 @@ const startServer = async () => {
       console.log('⚠️ Starting in limited mode - database unavailable');
     }
 
-    // Step 2: Load API routes
-    console.log('🛣️  Loading API routes...');
-    const loadedRoutes = await loadRoutes();
-    console.log(`✅ Loaded ${loadedRoutes.length} route modules:`, loadedRoutes);
-
     // Step 3: Start HTTP server
     httpServer.listen(PORT, () => {
       console.log('\n🎉 ==========================================');
@@ -371,9 +414,10 @@ const startServer = async () => {
       console.log(`📍 Port: ${PORT}`);
       console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
       console.log(`📊 Database: ${mongoose.connection.readyState === 1 ? 'Connected ✅' : 'Disconnected ⚠️'}`);
-      console.log(`🛣️  Routes: ${loadedRoutes.length} modules loaded`);
+      console.log(`🛣️  Routes: 6 modules mounted`);
       console.log(`🔗 Health: http://localhost:${PORT}/api/health`);
       console.log(`🐛 Debug: http://localhost:${PORT}/api/debug`);
+      console.log(`🔧 Route Test: http://localhost:${PORT}/api/debug-routes`);
       console.log('==========================================\n');
     });
 
