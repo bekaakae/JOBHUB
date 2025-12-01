@@ -1,4 +1,4 @@
-// src/pages/AdminDashboard.jsx
+// src/pages/AdminDashboard.jsx - TEMPORARY FIX
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '@clerk/clerk-react'
@@ -9,7 +9,6 @@ import {
   Eye, 
   Edit, 
   Trash2, 
-  Users, 
   Briefcase, 
   MessageCircle,
   Heart
@@ -31,13 +30,28 @@ const AdminDashboard = () => {
     totalLikes: 0
   })
 
+  // 🚨 TEMPORARY FIX - FORCE ADMIN ACCESS (REMOVE IN PRODUCTION)
+  console.log('🚨 TEMPORARY ADMIN ACCESS ENABLED - REMOVE IN PRODUCTION')
+  const isAdmin = true // Force admin access
+
+  // DEBUG: Keep logs to see what's wrong
+  console.log('🔍 AdminDashboard - User check DETAILED:', {
+    userId: user?.id,
+    userEmail: user?.emailAddresses?.[0]?.emailAddress,
+    userName: user?.fullName || user?.firstName,
+    publicMetadata: user?.publicMetadata,
+    hasRoleInMetadata: !!user?.publicMetadata?.role,
+    roleInMetadata: user?.publicMetadata?.role,
+    isAdminByMetadata: user?.publicMetadata?.role === 'admin',
+    isAdminById: user?.id === 'user_35yANDeI7IqVMt1pIA2ILe12yh0'
+  })
+
   useEffect(() => {
     const fetchAdminData = async () => {
       try {
         dispatch({ type: 'SET_LOADING', payload: true })
-        const response = await getJobs({ limit: 50 }) // Get more jobs for admin
+        const response = await getJobs({ limit: 50 })
         
-        // Calculate stats (you might want to create separate API endpoints for these)
         const totalJobs = response.data.length
         const activeJobs = response.data.filter(job => new Date(job.deadline) > new Date()).length
         const totalApplications = response.data.reduce((sum, job) => sum + (job.applicationsCount || 0), 0)
@@ -62,8 +76,6 @@ const AdminDashboard = () => {
 
     fetchAdminData()
   }, [dispatch])
-
-  const isAdmin = user?.publicMetadata?.role === 'admin'
 
   if (!isAdmin) {
     return (

@@ -1,4 +1,4 @@
-// src/App.jsx - UPDATED VERSION
+// src/App.jsx - FIXED VERSION (No Duplicate App)
 import { useEffect, useState } from 'react'
 import { Routes, Route } from 'react-router-dom'
 import { useAuth } from '@clerk/clerk-react'
@@ -21,6 +21,41 @@ function App() {
   const { isSignedIn, userId, user, isLoaded } = useAuth()
   const [authChecked, setAuthChecked] = useState(false)
 
+  // Clear temporary admin data on app start
+  useEffect(() => {
+    localStorage.removeItem('jobhub_temp_admin')
+    console.log('🧹 Cleared temporary admin data from localStorage')
+  }, [])
+
+  // DETAILED DEBUG LOGS
+  useEffect(() => {
+    if (user) {
+      console.log('🔄 App.jsx - User data DETAILED:', {
+        id: user.id,
+        fullName: user.fullName,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.emailAddresses?.[0]?.emailAddress,
+        publicMetadata: user.publicMetadata,
+        hasRoleInMetadata: !!user.publicMetadata?.role,
+        roleInMetadata: user.publicMetadata?.role
+      })
+      
+      const isAdminByMetadata = user.publicMetadata?.role === 'admin'
+      const isAdminById = user.id === 'user_35yANDeI7IqVMt1pIA2ILe12yh0'
+      
+      console.log('🔍 App.jsx - Admin Status Check DETAILED:', {
+        isAdminByMetadata,
+        isAdminById,
+        finalIsAdmin: isAdminByMetadata || isAdminById,
+        userMatchesTargetId: user.id === 'user_35yANDeI7IqVMt1pIA2ILe12yh0'
+      })
+
+      console.log('🔄 App.jsx - Full User Object:', user)
+    }
+  }, [user])
+
+  // Sync user with backend
   useEffect(() => {
     const syncUser = async () => {
       if (isLoaded && isSignedIn && userId) {

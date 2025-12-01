@@ -4,7 +4,7 @@ import { useAuth } from '@clerk/clerk-react'
 import { useSocket } from '../context/SocketContext'
 import { useJob } from '../context/JobContext'
 import { getJob } from '../services/jobService'
-import { toggleLike } from '../services/likeService'
+import { toggleLike, checkUserLike } from '../services/likeService'
 import { getCommentsByJob, createComment, deleteComment } from '../services/commentService'
 import { format, parseISO, isValid } from 'date-fns'
 import { 
@@ -31,11 +31,9 @@ import Card from '../components/ui/Card'
 const JobDetail = () => {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { isSignedIn, user } = useAuth()
+  const { isSignedIn, user, getToken } = useAuth()
   
-  // Fixed: Destructure socket properly from useSocket
   const { socket, isConnected, joinJobRoom } = useSocket()
-  
   const { state, dispatch } = useJob()
   const { selectedJob } = state
 
@@ -46,6 +44,8 @@ const JobDetail = () => {
   const [likeLoading, setLikeLoading] = useState(false)
   const [newComment, setNewComment] = useState('')
   const [deleteLoading, setDeleteLoading] = useState(false)
+  const [userHasLiked, setUserHasLiked] = useState(false)
+  const [likesCount, setLikesCount] = useState(0)
 
   const isAdmin = user?.publicMetadata?.role === 'admin'
 
@@ -123,12 +123,29 @@ const JobDetail = () => {
         const jobResponse = await getJob(id);
         console.log('📊 Job API Response:', jobResponse);
         
-        // FIXED: Better response checking
         if (jobResponse && jobResponse.success) {
           console.log('✅ Job data received:', jobResponse.data);
-          dispatch({ type: 'SET_SELECTED_JOB', payload: jobResponse.data });
+          const jobData = jobResponse.data;
           
-          // Fetch comments separately
+          dispatch({ type: 'SET_SELECTED_JOB', payload: jobData });
+          
+          // Set likes count from job data
+          setLikesCount(jobData.likesCount || jobData.likeCount || 0);
+          
+          // Check if current user has liked this job
+          if (isSignedIn) {
+            try {
+              const likeCheck = await checkUserLike(id);
+              console.log('💖 Like check response:', likeCheck);
+              if (likeCheck.success) {
+                setUserHasLiked(likeCheck.liked);
+              }
+            } catch (likeError) {
+              console.error('❌ Error checking user like:', likeError);
+            }
+          }
+
+          // Fetch comments
           try {
             const commentsResponse = await getCommentsByJob(id);
             console.log('✅ Comments data received:', commentsResponse);
@@ -138,7 +155,6 @@ const JobDetail = () => {
             setComments([]);
           }
         } else {
-          // FIXED: Better error message extraction
           const errorMsg = jobResponse?.message || 
                           jobResponse?.error?.message || 
                           jobResponse?.data?.message || 
@@ -149,7 +165,6 @@ const JobDetail = () => {
       } catch (error) {
         console.error('❌ Error fetching job details:', error);
         
-        // More specific error messages
         if (error.response?.status === 404) {
           setError('Job not found. It may have been removed.');
         } else if (error.response?.status === 400) {
@@ -165,9 +180,9 @@ const JobDetail = () => {
     };
 
     fetchJobDetails();
-  }, [id, dispatch]);
+  }, [id, dispatch, isSignedIn]);
 
-  // Socket.io for real-time comments and likes - WITH PROPER SAFETY CHECKS
+  // Socket.io for real-time comments and likes
   useEffect(() => {
     if (!socket || !isConnected) {
       console.log('🔌 Socket not available, skipping socket setup');
@@ -176,10 +191,8 @@ const JobDetail = () => {
 
     console.log('🔌 Setting up socket listeners for job:', id);
     
-    // Join the job room using the utility function
     joinJobRoom(id);
 
-    // Socket event listeners
     const handleCommentAdded = (data) => {
       if (data.jobId === id) {
         console.log('💬 New comment received:', data.comment);
@@ -197,35 +210,28 @@ const JobDetail = () => {
     const handleLikeUpdated = (data) => {
       if (data.jobId === id) {
         console.log('❤️ Like updated:', data);
-        dispatch({
-          type: 'UPDATE_LIKE',
-          payload: {
-            jobId: data.jobId,
-            likesCount: data.likesCount,
-            userHasLiked: data.action === 'liked'
-          }
-        });
+        setLikesCount(data.likesCount || data.count || 0);
+        if (data.userId === user?.id) {
+          setUserHasLiked(data.action === 'liked');
+        }
       }
     };
 
-    // Add event listeners
     socket.on('comment-added', handleCommentAdded);
     socket.on('comment-removed', handleCommentRemoved);
     socket.on('like-updated', handleLikeUpdated);
 
-    // Cleanup function
     return () => {
       console.log('🔌 Cleaning up socket listeners for job:', id);
       socket.off('comment-added', handleCommentAdded);
       socket.off('comment-removed', handleCommentRemoved);
       socket.off('like-updated', handleLikeUpdated);
       
-      // Leave the job room
       if (socket && isConnected) {
         socket.emit('leave-job-room', id);
       }
     };
-  }, [socket, isConnected, id, dispatch, joinJobRoom]);
+  }, [socket, isConnected, id, joinJobRoom, user]);
 
   const handleLike = async () => {
     if (!isSignedIn) {
@@ -235,17 +241,18 @@ const JobDetail = () => {
 
     try {
       setLikeLoading(true);
+      console.log('💖 Toggling like for job:', id);
+      
       const response = await toggleLike(id);
+      console.log('💖 Like toggle response:', response);
       
       if (response.success) {
-        dispatch({
-          type: 'UPDATE_LIKE',
-          payload: {
-            jobId: id,
-            likesCount: response.data.likesCount,
-            userHasLiked: response.data.userHasLiked
-          }
-        });
+        // Update local state immediately for better UX
+        const newLikedState = !userHasLiked;
+        setUserHasLiked(newLikedState);
+        setLikesCount(prev => newLikedState ? prev + 1 : prev - 1);
+        
+        console.log('✅ Like updated successfully');
       } else {
         console.error('Like toggle failed:', response.message);
         alert('Failed to like job: ' + response.message);
@@ -253,7 +260,6 @@ const JobDetail = () => {
     } catch (error) {
       console.error('Error toggling like:', error);
       
-      // More specific error handling
       if (error.response?.status === 404) {
         alert('Like feature is currently unavailable. Please try again later.');
       } else if (error.response?.status === 401) {
@@ -277,15 +283,32 @@ const JobDetail = () => {
 
     try {
       setCommentLoading(true)
-      await createComment({
+      console.log('💬 Submitting comment for job:', id);
+      
+      const response = await createComment({
         content: newComment,
         jobId: id
       })
+      
+      console.log('💬 Comment submission response:', response);
 
+      // Clear input on success
       setNewComment('')
+      
+      // Show success message
+      alert('Comment posted successfully!');
+      
     } catch (error) {
       console.error('Error creating comment:', error)
-      alert('Failed to post comment')
+      
+      // More specific error messages
+      if (error.response?.status === 401) {
+        alert('Please sign in to comment');
+      } else if (error.response?.status === 404) {
+        alert('Job not found. Cannot post comment.');
+      } else {
+        alert('Failed to post comment. Please try again.');
+      }
     } finally {
       setCommentLoading(false)
     }
@@ -295,7 +318,9 @@ const JobDetail = () => {
     if (!window.confirm('Are you sure you want to delete this comment?')) return
 
     try {
+      console.log('🗑️ Deleting comment:', commentId);
       await deleteComment(commentId)
+      alert('Comment deleted successfully!');
     } catch (error) {
       console.error('Error deleting comment:', error)
       alert('Failed to delete comment')
@@ -330,7 +355,6 @@ const JobDetail = () => {
         console.log('Error sharing:', error)
       }
     } else {
-      // Fallback: copy to clipboard
       copyToClipboard(window.location.href, 'Job link copied to clipboard!');
     }
   }
@@ -383,7 +407,6 @@ const JobDetail = () => {
     )
   }
 
-  // Use safe date functions
   const deadlineApproaching = isDeadlineApproaching(selectedJob.deadline)
   const jobExpired = isExpired(selectedJob.deadline)
 
@@ -564,15 +587,15 @@ const JobDetail = () => {
           {/* Action Buttons */}
           <div className="flex flex-wrap gap-3 mb-6">
             <Button
-              variant={selectedJob.userHasLiked ? "primary" : "outline"}
+              variant={userHasLiked ? "primary" : "outline"}
               loading={likeLoading}
               onClick={handleLike}
               className="flex items-center space-x-2"
             >
               <Heart 
-                className={`h-4 w-4 ${selectedJob.userHasLiked ? 'fill-current' : ''}`} 
+                className={`h-4 w-4 ${userHasLiked ? 'fill-current' : ''}`} 
               />
-              <span>Like ({selectedJob.likesCount || 0})</span>
+              <span>Like ({likesCount})</span>
             </Button>
 
             <Button
@@ -719,7 +742,6 @@ const JobDetail = () => {
           {/* Comments List */}
           <div className="space-y-4">
             {comments.map(comment => {
-              // Safe comment date formatting
               const commentDate = comment.createdAt ? formatDate(comment.createdAt) : 'Unknown date';
               
               return (
@@ -727,13 +749,15 @@ const JobDetail = () => {
                   <div className="flex justify-between items-start">
                     <div className="flex items-start space-x-3 flex-1">
                       <img
-                        src={comment.user?.profileImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(comment.user?.name || 'User')}&background=10B981&color=fff`}
-                        alt={comment.user?.name || 'User'}
+                        src={comment.user?.profileImage || comment.userImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(comment.user?.name || comment.userName || 'User')}&background=10B981&color=fff`}
+                        alt={comment.user?.name || comment.userName || 'User'}
                         className="w-8 h-8 rounded-full"
                       />
                       <div className="flex-1">
                         <div className="flex items-center space-x-2 mb-1">
-                          <span className="font-medium text-gray-900">{comment.user?.name || 'User'}</span>
+                          <span className="font-medium text-gray-900">
+                            {comment.user?.name || comment.userName || 'User'}
+                          </span>
                           <span className="text-xs text-gray-500">
                             {commentDate}
                           </span>

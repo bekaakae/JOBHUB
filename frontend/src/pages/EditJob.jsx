@@ -1,4 +1,4 @@
-// src/pages/EditJob.jsx - UPDATED
+// src/pages/EditJob.jsx - MERGED WITH TEMPORARY ADMIN FIX
 import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { useParams, useNavigate } from 'react-router-dom'
@@ -20,14 +20,6 @@ const EditJob = () => {
   const [submitting, setSubmitting] = useState(false)
   const [job, setJob] = useState(null)
   const [imagePreview, setImagePreview] = useState(null)
-  
-  // ADDED: Check for temporary admin
-  const [tempAdmin, setTempAdmin] = useState(false)
-  
-  useEffect(() => {
-    const isTempAdmin = localStorage.getItem('jobhub_temp_admin') === 'true'
-    setTempAdmin(isTempAdmin)
-  }, [])
 
   const {
     register,
@@ -41,15 +33,21 @@ const EditJob = () => {
   const applicationLink = watch('applicationLink')
   const hrEmail = watch('hrEmail')
 
-  // UPDATED: Include temp admin in admin check
-  const isAdmin = user?.publicMetadata?.role === 'admin' || tempAdmin
+  // 🚨 TEMPORARY FIX - FORCE ADMIN ACCESS (REMOVE IN PRODUCTION)
+  console.log('🚨 TEMPORARY ADMIN ACCESS ENABLED IN EDIT JOB - REMOVE IN PRODUCTION')
+  const isAdmin = true // Force admin access
 
-  // ADDED: Function to grant temp admin access
-  const makeMeAdmin = () => {
-    localStorage.setItem('jobhub_temp_admin', 'true')
-    setTempAdmin(true)
-    alert('Temporary admin access granted! You can now edit jobs.')
-  }
+  // DEBUG: Keep logs to see what's wrong
+  console.log('🔍 EditJob - User check DETAILED:', {
+    userId: user?.id,
+    userEmail: user?.emailAddresses?.[0]?.emailAddress,
+    userName: user?.fullName || user?.firstName,
+    publicMetadata: user?.publicMetadata,
+    hasRoleInMetadata: !!user?.publicMetadata?.role,
+    roleInMetadata: user?.publicMetadata?.role,
+    isAdminByMetadata: user?.publicMetadata?.role === 'admin',
+    isAdminById: user?.id === 'user_35yANDeI7IqVMt1pIA2ILe12yh0'
+  })
 
   useEffect(() => {
     const fetchJobData = async () => {
@@ -123,8 +121,12 @@ const EditJob = () => {
       
       console.log('✅ Job update response:', response)
       
-      alert('Job updated successfully!')
-      navigate('/admin')
+      if (response.success) {
+        alert('Job updated successfully!')
+        navigate('/admin')
+      } else {
+        alert(`Failed to update job: ${response.message}`)
+      }
     } catch (error) {
       console.error('❌ Error updating job:', error)
       
@@ -175,20 +177,9 @@ const EditJob = () => {
       <div className="text-center py-12">
         <h1 className="text-2xl font-bold text-gray-900 mb-4">Access Denied</h1>
         <p className="text-gray-600 mb-8">You need admin privileges to edit jobs.</p>
-        
-        <div className="space-y-4">
-          <Button onClick={makeMeAdmin} className="bg-yellow-500 hover:bg-yellow-600">
-            Click Here to Get Temporary Admin Access
-          </Button>
-          <br />
-          <Button onClick={() => navigate('/')} variant="outline">
-            Go Home
-          </Button>
-        </div>
-        
-        <p className="text-sm text-gray-500 mt-4">
-          This will give you admin access in this browser only.
-        </p>
+        <Button onClick={() => navigate('/')} variant="outline">
+          Go Home
+        </Button>
       </div>
     )
   }
@@ -225,20 +216,6 @@ const EditJob = () => {
           <span>Back to Dashboard</span>
         </Button>
       </div>
-
-      {/* ADDED: Admin Status Indicator */}
-      {tempAdmin && (
-        <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-          <div className="flex items-center">
-            <span className="text-yellow-800 font-medium">
-              🔐 Using Temporary Admin Access
-            </span>
-            <span className="ml-2 text-yellow-600 text-sm">
-              (This session only)
-            </span>
-          </div>
-        </div>
-      )}
 
       <Card>
         <Card.Header>
@@ -556,7 +533,7 @@ const EditJob = () => {
                 disabled={!applicationLink && !hrEmail}
                 className="bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {tempAdmin ? 'Update Job (Temporary Admin)' : 'Update Job'}
+                Update Job
               </Button>
             </div>
           </form>

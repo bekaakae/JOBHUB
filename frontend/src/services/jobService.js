@@ -1,10 +1,6 @@
 import api from './api';
 import { getToken } from './authService';
 
-// Check for temporary admin in localStorage
-const isTempAdmin = () => {
-  return localStorage.getItem('jobhub_temp_admin') === 'true';
-};
 
 // Enhanced response handler for single job responses
 const handleJobResponse = (response) => {
@@ -74,10 +70,6 @@ export const createJob = async (jobData) => {
       config.headers.Authorization = `Bearer ${token}`;
     }
 
-    if (isTempAdmin()) {
-      config.headers['x-temp-admin'] = 'true';
-    }
-
     const response = await api.post('/jobs', jobData, config);
     return handleJobResponse(response.data);
   } catch (error) {
@@ -137,10 +129,6 @@ export const updateJob = async (id, jobData) => {
       config.headers.Authorization = `Bearer ${token}`;
     }
 
-    if (isTempAdmin()) {
-      config.headers['x-temp-admin'] = 'true';
-    }
-
     const response = await api.put(`/jobs/${id}`, jobData, config);
     return handleJobResponse(response.data);
   } catch (error) {
@@ -159,10 +147,6 @@ export const deleteJob = async (id) => {
 
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
-    }
-
-    if (isTempAdmin()) {
-      config.headers['x-temp-admin'] = 'true';
     }
 
     const response = await api.delete(`/jobs/${id}`, config);

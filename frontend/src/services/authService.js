@@ -16,7 +16,7 @@ export const getToken = async () => {
   }
 };
 
-// Sync user with backend - UPDATED VERSION
+// Sync user with backend
 export const syncUserWithBackend = async () => {
   try {
     const token = await getToken();
@@ -69,7 +69,7 @@ export const isUserAdmin = async () => {
   }
 };
 
-// Alternative: Check admin status from frontend Clerk data
+// Check admin status from frontend Clerk data
 export const checkAdminFromClerk = (user) => {
   if (!user) return false;
   
@@ -80,9 +80,7 @@ export const checkAdminFromClerk = (user) => {
   
   // Check for specific user IDs (fallback)
   const adminUserIds = [
-    "user_35yANDeI7IqVMt1pIA2ILe12yh0",
-    "user_2h9J7x8X8Q8X8X8X8X8X8X8",
-    "user_2h9J7x8X8Q8X8X8X8X8X9"
+    "user_35yANDeI7IqVMt1pIA2ILe12yh0" // Your actual admin user ID
   ];
   
   return adminUserIds.includes(user.id);
