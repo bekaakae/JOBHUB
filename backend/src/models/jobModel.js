@@ -142,6 +142,13 @@ jobSchema.pre('validate', function(next) {
   next();
 });
 
+// Add this to your jobModel.js methods
+jobSchema.methods.updateLikeCount = async function() {
+  const Like = mongoose.model('Like');
+  this.likeCount = await Like.countDocuments({ job: this._id });
+  await this.save();
+};
+
 // Index for better query performance
 jobSchema.index({ category: 1, createdAt: -1 });
 jobSchema.index({ deadline: 1 });

@@ -1,82 +1,50 @@
-// src/middleware/adminMiddleware.js - ENHANCED VERSION
-import { getAuth, clerkClient } from "@clerk/express";
+// src/middleware/adminMiddleware.js - UPDATED WITH YOUR ID
 import User from "../models/userModel.js";
 
 const admin = async (req, res, next) => {
   try {
     console.log('🔐 Admin Middleware - Checking admin access...');
     
-    const { userId } = getAuth(req);
-    
-    if (!userId) {
-      console.log('❌ No user ID found in request');
+    // Check if user is authenticated
+    if (!req.user) {
+      console.log('❌ No user found in request');
       return res.status(401).json({ 
         success: false,
         message: "Authentication required" 
       });
     }
 
-    // Find user in database
-    let user = await User.findOne({ clerkId: userId });
+    console.log(`👤 Checking admin access for: ${req.user.name}, Role: ${req.user.role}, Clerk ID: ${req.user.clerkId}, DB ID: ${req.user._id}`);
+
+    // Your actual Clerk User ID - REPLACE THIS WITH YOUR ACTUAL ID
+    const adminClerkIds = [
+      "user_35yANDeI7IqVMt1pIA2ILe12yh0", // Your original ID
+      // Add your actual Clerk user ID here after checking the console logs
+    ];
+
+    // Check if user is admin by role OR by Clerk ID
+    const isAdminByRole = req.user.role === "admin";
+    const isAdminById = adminClerkIds.includes(req.user.clerkId);
     
-    if (!user) {
-      console.log(`❌ User not found in database for Clerk ID: ${userId}`);
-      
-      // Try to create user on the fly
-      try {
-        const clerkUser = await clerkClient.users.getUser(userId);
-        
-        // Check for admin users (add your Clerk user IDs here)
-        const adminClerkIds = [
-          "user_35yANDeI7IqVMt1pIA2ILe12yh0" // Add your actual Clerk user ID
-        ];
-        
-        const role = adminClerkIds.includes(userId) ? "admin" : "user";
-        
-        user = await User.create({
-          clerkId: userId,
-          name: clerkUser.firstName 
-            ? `${clerkUser.firstName}${clerkUser.lastName ? ' ' + clerkUser.lastName : ''}`
-            : clerkUser.username || "User",
-          email: clerkUser.emailAddresses?.[0]?.emailAddress || null,
-          profileImage: clerkUser.imageUrl || null,
-          role: role
-        });
-        
-        console.log(`✅ Created user on the fly: ${user.name} - Role: ${user.role}`);
-      } catch (createError) {
-        console.error('❌ Failed to create user:', createError);
-        return res.status(403).json({ 
-          success: false,
-          message: "User not found and cannot be created" 
-        });
-      }
-    }
-
-    console.log(`👤 User found: ${user.name}, Role: ${user.role}, ID: ${user._id}`);
-
-    // Check if user is admin
-    if (user.role !== "admin") {
-      console.log(`❌ User ${user.name} is not admin. Role: ${user.role}`);
-      
-      // Check for temporary admin access (from frontend)
-      const tempAdmin = req.headers['x-temp-admin'] === 'true';
-      if (tempAdmin) {
-        console.log('✅ Temporary admin access granted via header');
-        req.user = user;
-        return next();
-      }
+    if (!isAdminByRole && !isAdminById) {
+      console.log(`❌ User ${req.user.name} is not admin. Role: ${req.user.role}, Clerk ID: ${req.user.clerkId}`);
       
       return res.status(403).json({ 
         success: false,
         message: "Admin access only",
-        userRole: user.role,
-        userId: user.clerkId
+        userRole: req.user.role,
+        userId: req.user.clerkId
       });
     }
 
-    console.log(`✅ Admin access granted for: ${user.name}`);
-    req.user = user;
+    // If user is admin by ID but not by role, update their role in database
+    if (isAdminById && !isAdminByRole) {
+      console.log(`🔄 User ${req.user.name} is admin by ID but not by role. Updating role...`);
+      req.user.role = "admin";
+      await req.user.save();
+    }
+
+    console.log(`✅ Admin access granted for: ${req.user.name}`);
     next();
   } catch (error) {
     console.error("❌ Admin middleware error:", error);

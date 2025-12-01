@@ -1,49 +1,52 @@
-// src/middleware/authMiddleware.js
-import { getAuth } from "@clerk/express";
+// src/middleware/authMiddleware.js - UPDATED VERSION
+import { getAuth, clerkClient } from "@clerk/express";
 import User from "../models/userModel.js";
 
 const protect = async (req, res, next) => {
   try {
-    // Check for temporary admin header first
-    if (req.headers['x-temp-admin'] === 'true') {
-      console.log('🔐 Using temporary admin access');
-      
-      // Find or create a temporary admin user
-      let tempAdmin = await User.findOne({ email: 'temp-admin@jobhub.com' });
-      
-      if (!tempAdmin) {
-        tempAdmin = await User.create({
-          clerkId: 'temp-admin-' + Date.now(),
-          name: 'Temporary Admin',
-          email: 'temp-admin@jobhub.com',
-          role: 'admin'
-        });
-        console.log('✅ Created temporary admin user:', tempAdmin._id);
-      }
-      
-      req.user = tempAdmin;
-      return next();
-    }
-
     const { userId } = getAuth(req);
     
     if (!userId) {
-      // If no temporary admin and no Clerk userId, then we don't have a user
+      // No user ID found - user is not authenticated
       req.user = null;
       return next();
     }
 
+    // Find user in database
     let user = await User.findOne({ clerkId: userId });
     
     if (!user) {
-      // Create user if doesn't exist
-      user = await User.create({
-        clerkId: userId,
-        name: "New User", // Default name
-        email: null,
-        role: ["user_35yANDeI7IqVMt1pIA2ILe12yh0", "user_2h9J7x8X8Q8X8X8X8X8X9"].includes(userId) ? "admin" : "user"
-      });
-      console.log('✅ Created new user:', user._id);
+      // Create user if doesn't exist with proper user data from Clerk
+      try {
+        const clerkUser = await clerkClient.users.getUser(userId);
+        
+        // Define your actual admin user IDs here
+        const adminClerkIds = [
+          "user_35yANDeI7IqVMt1pIA2ILe12yh0", // Your original ID
+          // Add your actual Clerk user ID here
+        ];
+        
+        // Set role based on actual admin IDs, otherwise 'user'
+        const role = adminClerkIds.includes(userId) ? "admin" : "user";
+        
+        user = await User.create({
+          clerkId: userId,
+          name: clerkUser.firstName 
+            ? `${clerkUser.firstName}${clerkUser.lastName ? ' ' + clerkUser.lastName : ''}`
+            : clerkUser.username || "User",
+          email: clerkUser.emailAddresses?.[0]?.emailAddress || null,
+          profileImage: clerkUser.imageUrl || null,
+          role: role
+        });
+        
+        console.log(`✅ Created new user: ${user.name} - Role: ${user.role} - Clerk ID: ${user.clerkId}`);
+      } catch (createError) {
+        console.error('❌ Failed to create user:', createError);
+        req.user = null;
+        return next();
+      }
+    } else {
+      console.log(`👤 User found: ${user.name} - Role: ${user.role} - Clerk ID: ${user.clerkId}`);
     }
 
     req.user = user;
@@ -51,23 +54,7 @@ const protect = async (req, res, next) => {
   } catch (err) {
     console.error("Auth middleware error:", err);
     
-    // Even if there's an error, check for temporary admin as fallback
-    if (req.headers['x-temp-admin'] === 'true') {
-      console.log('🔐 Fallback: Using temporary admin access after error');
-      let tempAdmin = await User.findOne({ email: 'temp-admin@jobhub.com' });
-      if (!tempAdmin) {
-        tempAdmin = await User.create({
-          clerkId: 'temp-admin-' + Date.now(),
-          name: 'Temporary Admin',
-          email: 'temp-admin@jobhub.com',
-          role: 'admin'
-        });
-      }
-      req.user = tempAdmin;
-      return next();
-    }
-    
-    // Allow public access even if auth fails
+    // Allow public access even if auth fails, but no user
     req.user = null;
     next();
   }

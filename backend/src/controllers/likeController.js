@@ -1,22 +1,14 @@
-import Like from "../models/likeModel.js";
-import Job from "../models/jobModel.js";
+// src/controllers/likeController.js
+import Like from '../models/likeModel.js';
+import Job from '../models/jobModel.js';
 
-// @desc    Toggle like on a job
-// @route   POST /api/likes/toggle
-// @access  Private
 export const toggleLike = async (req, res) => {
   try {
     const { jobId } = req.body;
+    const userId = req.user._id;
 
-    if (!jobId) {
-      return res.status(400).json({
-        success: false,
-        message: "Job ID is required"
-      });
-    }
-
-    // Check if job exists and is active
-    const job = await Job.findOne({ _id: jobId, isActive: true });
+    // Check if job exists
+    const job = await Job.findById(jobId);
     if (!job) {
       return res.status(404).json({
         success: false,
@@ -26,108 +18,81 @@ export const toggleLike = async (req, res) => {
 
     // Check if user already liked the job
     const existingLike = await Like.findOne({
-      user: req.user?._id || req.user?.clerkId,
+      user: userId,
       job: jobId
     });
 
-    let userHasLiked;
-    let likesCount;
-
     if (existingLike) {
-      // Unlike: remove the like
+      // Unlike
       await Like.findByIdAndDelete(existingLike._id);
-      userHasLiked = false;
-      
-      // Get updated likes count
-      likesCount = await Like.countDocuments({ job: jobId });
+      res.json({
+        success: true,
+        liked: false,
+        message: "Like removed"
+      });
     } else {
-      // Like: create new like
-      await Like.create({
-        user: req.user?._id || req.user?.clerkId,
+      // Like
+      const like = await Like.create({
+        user: userId,
         job: jobId
       });
       
-      userHasLiked = true;
-      likesCount = await Like.countDocuments({ job: jobId });
+      res.json({
+        success: true,
+        liked: true,
+        message: "Like added"
+      });
     }
-
-    res.json({
-      success: true,
-      data: {
-        userHasLiked,
-        likesCount
-      }
-    });
   } catch (error) {
-    console.error("Toggle like error:", error);
+    console.error("Like toggle error:", error);
     res.status(500).json({
       success: false,
-      message: "Server error while toggling like",
-      error: error.message
+      message: "Server error"
     });
   }
 };
 
-// @desc    Get likes for a job
-// @route   GET /api/likes/job/:jobId
-// @access  Public
 export const getLikesByJob = async (req, res) => {
   try {
     const { jobId } = req.params;
-
-    const likesCount = await Like.countDocuments({ job: jobId });
     
-    // Check if current user has liked the job
-    let userHasLiked = false;
-    if (req.user) {
-      const userLike = await Like.findOne({
-        user: req.user?._id || req.user?.clerkId,
-        job: jobId
-      });
-      userHasLiked = !!userLike;
-    }
+    const likes = await Like.find({ job: jobId })
+      .populate('user', 'name profileImage')
+      .lean();
 
     res.json({
       success: true,
-      data: {
-        likesCount,
-        userHasLiked
-      }
+      data: likes,
+      count: likes.length
     });
   } catch (error) {
     console.error("Get likes error:", error);
     res.status(500).json({
       success: false,
-      message: "Server error while fetching likes",
-      error: error.message
+      message: "Server error"
     });
   }
 };
 
-// @desc    Check if user liked a job
-// @route   GET /api/likes/job/:jobId/check
-// @access  Private
 export const checkUserLike = async (req, res) => {
   try {
     const { jobId } = req.params;
+    const userId = req.user._id;
 
-    const userLike = await Like.findOne({
-      user: req.user?._id || req.user?.clerkId,
+    const like = await Like.findOne({
+      user: userId,
       job: jobId
     });
 
     res.json({
       success: true,
-      data: {
-        userHasLiked: !!userLike
-      }
+      liked: !!like
     });
   } catch (error) {
-    console.error("Check user like error:", error);
+    console.error("Check like error:", error);
     res.status(500).json({
       success: false,
-      message: "Server error while checking like",
-      error: error.message
+      message: "Server error"
     });
   }
 };
